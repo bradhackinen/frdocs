@@ -9,7 +9,7 @@ from frdocs.config import data_dir
 project_dir = Path(os.path.dirname(os.path.abspath(__file__)))
 
 
-default_fields = ['document_number', 'abstract', 'action', 'agencies_short',
+default_fields = ['frdoc_number', 'abstract', 'action', 'agencies_short',
                   'agency_ids', 'ult_agencies', 'ult_agency_ids',
                   'comments_close_on', 'docket_ids', 'publication_date',
                   'regulation_id_numbers', 'cfr_references', 'title', 'topics',
@@ -58,10 +58,13 @@ def cfr_dict_to_string(d):
 def clean_info(info, fields=default_fields, to_tuple=False):
     info = info.copy()
 
+    # Rename document_number --> frdoc_number (less ambigous when combining with other data)
+    info['frdoc_number'] = info['document_number']
+
     # Classify type and reprint, correction, temporary using document number and action
     info['fr_type'] = info['type']
-    info['is_reprint'] = 'R' in info['document_number']
-    info['is_correction'] = bool(re.search(r'[CX]', info['document_number']))
+    info['is_reprint'] = 'R' in info['frdoc_number']
+    info['is_correction'] = bool(re.search(r'[CX]', info['frdoc_number']))
     info['is_temporary'] = False
 
     if info['action']:
@@ -155,7 +158,7 @@ def load_agency_df():
     return df
 
 
-def iter_parsed(document_numbers=None, raise_missing=False, verbose=True):
+def iter_parsed(frdoc_numbers=None, raise_missing=False, verbose=True):
     '''
     Iteratively load all parsed files, or all files in a list of document numbers.
 
@@ -164,8 +167,8 @@ def iter_parsed(document_numbers=None, raise_missing=False, verbose=True):
     raising errors by setting raise_missing=True
     '''
 
-    if document_numbers is not None:
-        files = (f'{d}.pkl' for d in document_numbers)
+    if frdoc_numbers is not None:
+        files = (f'{d}.pkl' for d in frdoc_numbers)
     else:
         files = os.listdir(Path(data_dir) / 'parsed')
 
@@ -185,11 +188,11 @@ def iter_parsed(document_numbers=None, raise_missing=False, verbose=True):
         yield d, df
 
 
-def load_parsed(document_number):
+def load_parsed(frdoc_number):
     '''
     Loads a single parsed file by FR document number.
     '''
-    return pd.read_pickle(Path(data_dir) / 'parsed' / f'{document_number}.pkl')
+    return pd.read_pickle(Path(data_dir) / 'parsed' / f'{frdoc_number}.pkl')
 
 
 if __name__ == "__main__":

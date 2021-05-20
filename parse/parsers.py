@@ -451,3 +451,48 @@ def parse_html_file(html_filename,extract_numbering=True):
     with open(html_filename,encoding='utf8') as f:
         text = f.read()
     return parse_html(text,extract_numbering=extract_numbering)
+
+
+def standardize_frdoc_number(d):
+    """
+    The document numbers used in on federalregister.gov are also parsed from
+    raw data, and can include errors such as small pieces of text appended to
+    the end of the string.
+
+    Document numbers also sometimes have multiple reprentations. For example,
+        2005-0034
+        05-0034
+        5-0034
+        E5-0034
+        2005-34
+    Would presumably all refer to the same document.
+
+    This function standardizes documents numbers by:
+        1) Removing any trailing non-numeric characters
+        2) Dropping first two digits of the year when 4 digits are present
+        3) Dropping leading zeros from the last number
+    """
+    try:
+        # Remove trailing non-numeric chars
+        d = re.sub(r'[^0-9]+$','',d)
+
+        # Remove "E" - never seems completely necessary
+        d = d.replace('E','')
+
+        # Split into parts
+        parts = d.rsplit('-')
+
+        # Clean year. Could be in any part except the last.
+        for i in range(len(parts)-1) in parts[:-1]:
+            if re.match(r'(19|20?)\d\d',parts[i]):
+                parts[i] = re.sub(r'(19|200?)','',parts[i])
+                break
+
+        try:
+            parts[-1] = str(int(parts[-1]))
+        except Exception:
+            pass
+
+        return '-'.join(parts)
+    except Exception:
+        return d

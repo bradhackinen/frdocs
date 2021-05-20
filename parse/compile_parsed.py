@@ -9,7 +9,7 @@ from unidecode import unidecode
 import gzip
 from lxml import etree as et
 
-from frdocs.parse.parsers import parse_reg_xml_tree
+from frdocs.parse.parsers import parse_reg_xml_tree, standardize_frdoc_number
 from frdocs import load_info_df
 
 from frdocs.config import data_dir
@@ -23,7 +23,7 @@ version published is included.
 '''
 
 
-def extract_document_number(s):
+def extract_frdoc_number(s):
     '''
     This function extracts the document from an FRDOC string. The standard
     format is something like:
@@ -69,7 +69,7 @@ def extract_document_number(s):
     # Case 1: Format is "[FR Doc. #####..."
     m = re.search(fr'FR\sDoc\.?\s*{fr_pattern}',s,flags=re.IGNORECASE | re.VERBOSE)
 
-    if not m:
+    if not m or len(m.group(0)) < 3:
         # Case 2: Format is "...###### Filed..."
         m = re.search(fr'[.\s]{fr_pattern};?\s*Fil',s,flags=re.IGNORECASE | re.VERBOSE)
 
@@ -108,44 +108,10 @@ def extract_document_number(s):
         return d
 
 
-def standardize_document_number(d):
-    """
-    The document numbers used in on federalregister.gov are also parsed from
-    raw data, and can include errors such as small pieces of text appended to
-    the end of the string.
-
-    Document numbers also sometimes have multiple reprentations. For example,
-        2005-0034
-        05-0034
-        2005-34
-    Would presumably all refer to the same document.
-
-    This function standardizes documents numbers by:
-        1) Removing any trailing non-numeric characters
-        2) Dropping first two digits of the year when 4 digits are present
-        3) Dropping leading zeros from the last number
-    """
-    try:
-        # Remove trailing non-numeric chars
-        d = re.sub(r'[^0-9]+$','',d)
-
-        d1,d2 = d.rsplit('-',1)
-
-        d1 = re.sub(r'(19|20)(?=\d\d($|-))','',d1)
-
-        try:
-            d2 = str(int(d2))
-        except Exception:
-            pass
-
-        return '-'.join((d1,d2))
-    except Exception:
-        return d
-
-# standardize_document_number('2005-0034')
-# standardize_document_number('05-0034')
-# standardize_document_number('2005-34')
-# standardize_document_number('E05-0034')
+# standardize_frdoc_number('2005-0034')
+# standardize_frdoc_number('05-0034')
+# standardize_frdoc_number('2005-34')
+# standardize_frdoc_number('E05-0034')
 
 
 def main(args):
@@ -156,11 +122,11 @@ def main(args):
     if not os.path.isdir(parsed_dir):
         os.mkdir(parsed_dir)
 
-    info_df = load_info_df(fields=['document_number','publication_date','full_text_xml_url'])
+    info_df = load_info_df(fields=['frdoc_number','publication_date','full_text_xml_url'])
 
-    meta_docs = set(info_df['document_number'].dropna())
+    meta_docs = set(info_df['frdoc_number'].dropna())
 
-    standardized_to_frdoc = {standardize_document_number(d):d for d in meta_docs}
+    standardized_to_frdoc = {standardize_frdoc_number(d):d for d in meta_docs}
 
     n_lost = len(meta_docs) - len(standardized_to_frdoc)
     if n_lost:
@@ -196,10 +162,10 @@ def main(args):
 
                     s = ' '.join(frdoc_elements[0].itertext())
 
-                    extracted_frdoc = extract_document_number(s)
+                    extracted_frdoc = extract_frdoc_number(s)
 
                     # Find the frdoc that shares the same standardized form
-                    standardized_frdoc = standardize_document_number(extracted_frdoc)
+                    standardized_frdoc = standardize_frdoc_number(extracted_frdoc)
 
                     if standardized_frdoc in standardized_to_frdoc:
 
@@ -223,7 +189,7 @@ def main(args):
     print(f'Parsed {parsed} documents')
     print(f'Now have parsed documents for {100*len(existing)/len(meta_docs):.1f}% of documents with metadata')
     if len(existing) < len(meta_docs):
-        missing_with_xml = set(info_df[info_df['full_text_xml_url'].notnull()]['document_number']) - existing
+        missing_with_xml = set(info_df[info_df['full_text_xml_url'].notnull()]['frdoc_number']) - existing
         print(f'\tOf these missing documents, {len(missing_with_xml)} have xml urls in the metadata')
         if missing_with_xml:
             print('\tExamples include:\n\t\t' + '\n\t\t'.join(random.sample(missing_with_xml,k=min(100,len(missing_with_xml)))))
