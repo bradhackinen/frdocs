@@ -11,25 +11,29 @@ from frdocs import load_info_df
 
 
 def main(args):
-    xml_dir = Path(args.xml_dir)
+    download_dir = Path(data_dir) / 'raw'
 
     info_df = load_info_df(fields=['document_number', 'publication_date', 'full_text_xml_url'])
 
-    dates_df = info_df.groupby('publication_date')[['document_number']].count() \
-                      .reset_index() \
-                      .rename(columns={'document_number': 'documents'})
+    dates_df = info_df[info_df['full_text_xml_url'].notnull()] \
+                        .groupby('publication_date')[['document_number']].count() \
+                        .reset_index() \
+                        .rename(columns={'document_number': 'documents'})
 
     dates = sorted(list(dates_df['publication_date']))
 
-    if not os.path.exists(xml_dir):
-        os.makedirs(xml_dir)
+    if not os.path.exists(download_dir):
+        os.makedirs(download_dir)
+
+    if not os.path.exists(download_dir / 'xml'):
+        os.makedirs(download_dir / 'xml')
 
     # Search for existing files\
     if args.force_update:
         print(f'Downloading XML for {len(dates)} dates')
     else:
-        existing = {f.split('.', 1)[0] for f in os.listdir(xml_dir)}
-        print(f'Found {len(existing)} existing date files')
+        existing = {f.split('.', 1)[0] for f in os.listdir(download_dir / 'xml')}
+        print(f'Found {len(existing)} existing daily XML files')
 
         dates = [d for d in dates if d not in existing]
         print(f'Downloading XML for {len(dates)} remaining dates')
@@ -38,7 +42,7 @@ def main(args):
     downloaded = 0
     for d in tqdm(dates):
 
-        save_file = xml_dir / f'{d}.xml.gz'
+        save_file = download_dir / 'xml' / f'{d}.xml.gz'
         url = f'https://www.govinfo.gov/content/pkg/FR-{d}/xml/FR-{d}.xml'
 
         try:
@@ -68,7 +72,6 @@ if __name__ == "__main__":
 
     parser = ArgumentParser()
 
-    parser.add_argument('--xml_dir', type=str, default=str(Path(data_dir) / 'xml'))
     parser.add_argument('--force_update', dest='force_update', action='store_true')
 
     args = parser.parse_args()
@@ -88,7 +91,7 @@ if __name__ == "__main__":
 #
 # def main(args):
 #
-#     xml_dir = Path(args.xml_dir)
+#     download_dir = Path(args.download_dir)
 #
 #     print('Loading document info')
 #
@@ -98,12 +101,12 @@ if __name__ == "__main__":
 #
 #     print(f'Found {len(info_df)} documents with XML urls')
 #
-#     if not os.path.exists(xml_dir):
-#         os.makedirs(xml_dir)
+#     if not os.path.exists(download_dir):
+#         os.makedirs(download_dir)
 #
 #     if not args.force_update:
 #
-#         existing = {f.split('.',1)[0] for f in os.listdir(xml_dir)}
+#         existing = {f.split('.',1)[0] for f in os.listdir(download_dir)}
 #
 #         info_df = info_df[~info_df['document_number'].isin(existing)]
 #         print(f'Found {len(existing)} existing files ({len(info_df)} remain to download)')
@@ -112,7 +115,7 @@ if __name__ == "__main__":
 #     print('Downloading')
 #     for d,url in tqdm(info_df.values):
 #
-#         save_file = xml_dir/f'{d}.xml.gz'
+#         save_file = download_dir/f'{d}.xml.gz'
 #
 #         r = get_with_retry(url)
 #

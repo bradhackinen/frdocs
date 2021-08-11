@@ -1,7 +1,7 @@
 import os
 from argparse import ArgumentParser
 from pathlib import Path
-from datetime import date, datetime, timedelta
+from datetime import datetime, timedelta
 from tqdm import tqdm
 from msgpack import dump
 from dateutil.parser import parse as parse_date
@@ -17,26 +17,30 @@ def date_range(start, end):
 
 
 def main(args):
-    meta_dir = Path(args.meta_dir)
+    download_dir = Path(data_dir) / 'raw'
+
     start_date = parse_date(args.start_date).date()
     end_date = parse_date(args.end_date).date()
+
+    if not os.path.exists(download_dir):
+        os.makedirs(download_dir)
+
+    if not os.path.exists(download_dir / 'meta'):
+        os.makedirs(download_dir / 'meta')
 
     print('\nDownloading agency metdata')
     agencies = api.get_all_agencies()
 
-    with open(Path(data_dir) / 'agencies.msgpack','wb') as f:
+    with open(Path(data_dir) / 'raw' / 'agencies.msgpack','wb') as f:
         dump(agencies,f)
 
     print(f'Downloading document metadata for {start_date} to {end_date}')
-
-    if not os.path.exists(meta_dir):
-        os.makedirs(meta_dir)
 
     # Search for existing files
     if args.force_update:
         remaining = list(date_range(start_date,end_date))
     else:
-        existing = {f.split('.',1)[0] for f in os.listdir(meta_dir)}
+        existing = {f.split('.',1)[0] for f in os.listdir(download_dir / 'meta')}
         print(f'Found {len(existing)} existing daily files')
 
         remaining = [d for d in date_range(start_date,end_date)
@@ -47,7 +51,7 @@ def main(args):
     downloaded = 0
     for d in tqdm(remaining):
 
-        save_file = meta_dir / f'{d}.msgpack'
+        save_file = download_dir / 'meta' / f'{d}.msgpack'
 
         searchParams = {
                         'order':'oldest',
@@ -75,8 +79,7 @@ if __name__ == "__main__":
 
     parser = ArgumentParser()
 
-    parser.add_argument('--meta_dir',type=str,default=str(Path(data_dir) / 'meta'))
-    parser.add_argument('--start_date',type=str,default=str(date(2000,1,1)))
+    parser.add_argument('--start_date',type=str,default='1994-01-03')
     parser.add_argument('--end_date',type=str,default=str(datetime.today().date()))
     parser.add_argument('--force_update',dest='force_update',action='store_true')
 

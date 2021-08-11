@@ -1,28 +1,27 @@
 import os
 from pathlib import Path
 import pandas as pd
-import regex as re
 from msgpack import load
+import re
 
 from frdocs.config import data_dir
 
 project_dir = Path(os.path.dirname(os.path.abspath(__file__)))
 
-
-default_fields = ['frdoc_number', 'abstract', 'action', 'agencies_short',
-                  'agency_ids', 'ult_agencies', 'ult_agency_ids',
-                  'comments_close_on', 'docket_ids', 'publication_date',
-                  'regulation_id_numbers', 'cfr_references', 'title', 'topics',
-                  'fr_type', 'type', 'significant', 'is_correction',
-                  'is_temporary', 'is_reprint']  # ,'type_order','is_comment_extension','is_affirmation','is_direct']
+default_info_fields = ['frdoc_number', 'abstract', 'action', 'agencies_short',
+                          'agency_ids', 'ult_agencies', 'ult_agency_ids',
+                          'comments_close_on', 'docket_ids', 'publication_date',
+                          'regulation_id_numbers', 'cfr_references', 'title', 'topics',
+                          'fr_type', 'type', 'significant', 'is_correction',
+                          'is_temporary', 'is_reprint']
 
 # Load agency info
-with open(Path(data_dir) / 'agencies.msgpack', 'rb') as f:
+with open(Path(data_dir) / 'raw' / 'agencies.msgpack', 'rb') as f:
     agencies = load(f)
 
-agency_id_translator = {info['id']: info['name'] for info in agencies}
-agency_parent = {info['id']: info['parent_id'] for info in agencies}
-agency_short = {info['id']: info['short_name'] for info in agencies}
+agency_id_translator = {record['id']: record['name'] for record in agencies}
+agency_parent = {record['id']: record['parent_id'] for record in agencies}
+agency_short = {record['id']: record['short_name'] for record in agencies}
 
 
 def ult_parent_agency(agency_id):
@@ -32,122 +31,7 @@ def ult_parent_agency(agency_id):
         return agency_id
 
 
-agency_ult_parent = {info['id']: ult_parent_agency(info['id']) for info in agencies}
-
-
-def iter_doc_info(years=None, dates=None):
-    for file in os.listdir(Path(data_dir) / 'meta'):
-        if years is not None and int(file[:4]) not in years:
-            continue
-        if dates is not None and file[:10] not in dates:
-            continue
-
-        with open(Path(data_dir) / 'meta' / file, 'rb') as f:
-            records = load(f)
-            for record in records:
-                yield record
-
-
-def cfr_dict_to_string(d):
-    if d['chapter']:
-        return '%s CFR Chapter %s %s' % (d['title'], d['chapter'], d['part'])
-    else:
-        return '%s CFR %s' % (d['title'], d['part'])
-
-
-def clean_info(info, fields=default_fields, to_tuple=False):
-    info = info.copy()
-
-    # Rename document_number --> frdoc_number (less ambigous when combining with other data)
-    info['frdoc_number'] = info['document_number']
-
-    # Classify type and reprint, correction, temporary using document number and action
-    info['fr_type'] = info['type']
-    info['is_reprint'] = 'R' in info['frdoc_number']
-    info['is_correction'] = bool(re.search(r'[CX]', info['frdoc_number']))
-    info['is_temporary'] = False
-
-    if info['action']:
-        action = info['action'].lower()
-        if 'type' in fields:
-            if re.search(r'proposed\s+rule', action):
-                if re.search(r'advance.+notice.+proposed\s+rule', action):
-                    info['type'] = 'ANPRM'
-                else:
-                    info['type'] = 'Proposed Rule'
-
-            elif re.search(r'final\s+rule', action) or info['fr_type'] == 'Rule':
-                if 'interim' in action and 'affirmation' not in action:
-                    info['type'] = 'Interim Rule'
-                elif re.search('(affirmation.+rule|notice of effective date)', action):
-                    info['type'] = 'Affirmation of Rule'
-                elif re.search(r'(direct|immediate|emergency)', action) \
-                        and 'withdrawal' not in action:
-                    info['type'] = 'Direct Rule'
-                else:
-                    info['type'] = 'Rule'
-
-            elif re.search(r'regulatory\sagenda', action):
-                info['type'] = 'Regulatory Agenda'
-
-            if re.search(r'(exten(d|sion)|reopening).+(time|period|deadline)', action):
-                if 'comment' in action:
-                    info['type'] = 'Comment Extension'
-                elif 'filing' in action:
-                    info['type'] = 'Filing Extension'
-
-        if bool(re.search(r'correcti(on|ng)', action)):
-            info['is_correction'] = True
-
-        if 'temporary' in action:
-            info['is_temporary'] = True
-
-    # Assume documents with missing 'significant' info are not significant
-    info['significant'] = info['significant'] or False
-
-    if 'ult_agencies' or 'ult_agency_ids' in fields:
-        info['ult_agency_ids'] = tuple(
-            sorted({agency_ult_parent[agency['id']]
-                    for agency in info.get('agencies', []) if 'id' in agency}))
-
-        info['ult_agencies'] = tuple(agency_id_translator[i]
-                                     for i in info['ult_agency_ids'])
-
-    if 'agencies' in fields or 'agency_ids' in fields \
-            or 'agencies_short' in fields:
-
-        info['agency_ids'] = tuple(
-            sorted({agency['id'] for agency in info.get('agencies', []) if 'id' in agency}))
-        info['agencies'] = tuple(agency_id_translator[i] for i in info['agency_ids'])
-        info['agencies_short'] = tuple(agency_short[i] for i in info['agency_ids'])
-
-    if 'cfr_references' in fields:
-        info['cfr_references'] = [cfr_dict_to_string(d)
-                                  for d in info.get('cfr_references', [])]
-
-    if 'text_url' in fields:
-        info['text_url'] = info['pdf_url'].replace('/pdf/', '/html/').replace('.pdf', '.htm')
-
-    # if 'path' in fields:
-    #     if info['full_text_xml_url']:
-    #         m = re.search(r'xml(.+?)\.xml',info['full_text_xml_url'])
-    #         info['path'] = m.group(1)
-    #     else:
-    #         info['path'] = np.nan
-
-    if fields != 'all':
-        info = {k: info[k] for k in fields}
-
-    if to_tuple:
-        return tuple(info[k] for k in fields)
-    else:
-        return info
-
-
-def load_info_df(years=None, fields=default_fields):
-    return pd.DataFrame([clean_info(info, fields, to_tuple=True)
-                         for info in iter_doc_info(years=years)],
-                        columns=fields)
+agency_ult_parent = {record['id']: ult_parent_agency(record['id']) for record in agencies}
 
 
 def load_agency_df():
@@ -158,7 +42,58 @@ def load_agency_df():
     return df
 
 
-def iter_parsed(frdoc_numbers=None, raise_missing=False, verbose=True):
+def load_index():
+    return pd.read_csv(Path(data_dir)/'index.csv')
+
+
+def load_info(frdoc_number):
+    '''
+    Loads a single cleaned metatadata record by frdoc number
+    '''
+    with open(Path(data_dir) / 'info' / f'{frdoc_number}.msgpack','rb') as f:
+        return load(f)
+
+
+def iter_info(frdoc_numbers=None, fields=default_info_fields, missing='warn'):
+
+    assert missing in ['raise','warn','ignore']
+
+    if frdoc_numbers is None:
+        index_df = load_index()
+        frdoc_numbers = index_df['frdoc_number']
+
+    for frdoc_number in frdoc_numbers:
+        try:
+            with open(Path(data_dir) / 'info' / f'{frdoc_number}.msgpack','rb') as f:
+                record = load(f)
+
+            if fields != 'all':
+                record = {k:record[k] for k in fields}
+
+        except FileNotFoundError as e:
+            if missing == 'raise':
+                raise e
+            elif missing == 'warn':
+                print(f'Warning: No info file found for {frdoc_number}')
+
+            continue
+
+        yield record
+
+
+def load_info_df(frdoc_numbers=None,fields=default_info_fields):
+    return pd.DataFrame([tuple(r[k] for k in fields) for r in iter_info(frdoc_numbers=frdoc_numbers,fields='all')],
+                            columns=fields)
+
+
+def load_parsed(frdoc_number):
+    '''
+    Loads a single parsed file by FR document number.
+    '''
+    return pd.read_pickle(Path(data_dir) / 'parsed' / f'{frdoc_number}.pkl')
+
+
+def iter_parsed(frdoc_numbers=None, missing='warn'):
     '''
     Iteratively load all parsed files, or all files in a list of document numbers.
 
@@ -166,6 +101,7 @@ def iter_parsed(frdoc_numbers=None, raise_missing=False, verbose=True):
     data may not correspond exactly to passed document numbers. Can force
     raising errors by setting raise_missing=True
     '''
+    assert missing in ['raise','warn','ignore']
 
     if frdoc_numbers is not None:
         files = (f'{d}.pkl' for d in frdoc_numbers)
@@ -177,25 +113,96 @@ def iter_parsed(frdoc_numbers=None, raise_missing=False, verbose=True):
 
         try:
             df = pd.read_pickle(Path(data_dir) / 'parsed' / f)
-        except Exception as e:
-            if raise_missing:
+
+        except FileNotFoundError as e:
+            if missing == 'raise':
                 raise e
-            else:
-                if verbose:
-                    print(f'Warning: No parsed file found for {d}')
-                continue
+            elif missing == 'warn':
+                print(f'Warning: No parsed file found for {d}')
+
+            continue
 
         yield d, df
 
 
-def load_parsed(frdoc_number):
-    '''
-    Loads a single parsed file by FR document number.
-    '''
-    return pd.read_pickle(Path(data_dir) / 'parsed' / f'{frdoc_number}.pkl')
+def iter_agenda(publications=None,rin_list=None):
+    agenda_dir = Path(data_dir) / 'agenda'
+    if not publications:
+        publications = os.listdir(agenda_dir)
+
+    if rin_list:
+        rin_list = set(rin_list)
+
+    for publication in publications:
+
+        for rin_file in os.listdir(agenda_dir/publication):
+
+            if rin_list:
+                rin = rin_file.split('.')[0]
+                if rin not in rin_list:
+                    continue
+
+            with open(agenda_dir/publication/rin_file,'rb') as f:
+                yield load(f)
+
+
+def load_agenda_df(publications=None,rin_list=None):
+    return pd.DataFrame(list(iter_agenda(publications=publications,rin_list=rin_list)))
+
+
+def load_timetable_df(publications=None,rin_list=None):
+    return pd.DataFrame([dict(publication=record['publication'],rin=record['rin'],**event)
+                            for record in iter_agenda(publications=publications,rin_list=rin_list)
+                            for event in record.get('timetable',[])])
+
+
+class CitationFinder():
+
+    def __init__(self):
+        self.index_df = load_index()
+
+        self.index_df = self.index_df.sort_values(['volume','start_page','end_page','frdoc_number'])
+
+        # multi_page = self.index_df['end_page'] > self.index_df['start_page']
+        # self.index_df.loc[multi_page,'end_page'] = self.index_df.loc[multi_page,'end_page'] - 1
+
+        self.volume = self.index_df['volume']
+        self.start_page = self.index_df['start_page']
+        self.end_page = self.index_df['end_page']
+
+    def __call__(self,citation_string=None,volume=None,page=None,favour_first_page=True,strict_parsing=False):
+
+        if not citation_string or (volume and page):
+            raise ValueError('Must provide a citation string, or volume and page')
+
+        if citation_string:
+            if strict_parsing:
+                m = re.search(r'(\d+) FR (\d+)',citation_string)
+                if not m:
+                    raise ValueError(f'Could not parse citation string "{citation_string}". You may want to try strict_parsing=False.')
+            else:
+                m = re.search(r'(\d+)[^0-9]+(\d+)',citation_string)
+                if not m:
+                    raise ValueError(f'Could not parse citation string "{citation_string}"')
+
+            volume = m.group(1)
+            page = m.group(2)
+
+        volume = int(volume)
+        page = int(page)
+
+        df = self.index_df[(self.volume == volume) & (self.start_page <= page) & (self.end_page >= page)].copy()
+
+        if len(df) > 1 and favour_first_page:
+            df['first_page_match'] = (self.start_page == page)
+            if df['first_page_match'].sum():
+                df = df[df['first_page_match']]
+
+        return list(df['frdoc_number'].values)
 
 
 if __name__ == "__main__":
+
     print('Testing loaders')
 
     print('\nFunction: load_agency_df')
@@ -210,9 +217,20 @@ if __name__ == "__main__":
     print(df.head(1).T)
     print(f'\nObservations: {len(df)}')
 
+    print('\nFunction: load_agenda_df')
+    df = load_agenda_df()
+    print('First row:')
+    print(df.head(1).T)
+    print(f'\nObservations: {len(df)}')
+
+    print('\nFunction: load_timetable_df')
+    df = load_timetable_df()
+    print('First row:')
+    print(df.head(1).T)
+    print(f'\nObservations: {len(df)}')
+
     print('\nFunction: iter_parsed')
-    for d, df in iter_parsed():
-        break
+    d,df = next(iter_parsed())
     print('First row of first item:')
     print(df.head(1).T)
 
@@ -220,3 +238,10 @@ if __name__ == "__main__":
     df = load_parsed(d)
     print('First row of first item:')
     print(df.head(1).T)
+
+    print('\nTesting CitationFinder')
+    citation_finder = CitationFinder()
+    print(f"{citation_finder('78 FR 41677')=}")
+    print(f"{citation_finder('78 FR 41678')=}")
+    print(f"{citation_finder('65 FR 4601')=}")
+    print(f"{citation_finder('65 FR 4601',favour_first_page=False)=}")

@@ -1,11 +1,11 @@
 import os
 from pathlib import Path
 
-from frdocs.parse.parsers import parse_html_file,parse_xml_file
+from frdocs.parsing.doc_parsing import parse_html_file,parse_xml_file
 from frdocs import project_dir
 
 
-test_dir = project_dir / 'parse' / 'parse_test'
+test_dir = project_dir / 'parse' / 'test_docs'
 
 for f in sorted(os.listdir(test_dir)):
     print(f'Parsing {f}')
