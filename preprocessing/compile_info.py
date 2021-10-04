@@ -25,7 +25,7 @@ def clean_info(record):
     # Classify type and reprint, correction, temporary using document number and action
     record['fr_type'] = record['type']
     record['is_reprint'] = 'R' in record['frdoc_number']
-    record['is_correction'] = bool(re.search(r'[CX]', record['frdoc_number'])) | bool(record['correction_of'])
+    record['is_correction'] = bool(re.search(r'[CXZ]', record['frdoc_number'])) | bool(record['correction_of'])
     record['is_temporary'] = False
 
     if record['action']:

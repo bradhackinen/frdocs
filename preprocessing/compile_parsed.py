@@ -10,7 +10,7 @@ import gzip
 from lxml import etree as et
 import pandas as pd
 
-from frdocs.preprocessing.parsing import parse_reg_xml_tree
+from frdocs.preprocessing.parsing import parse_reg_xml_tree, extract_frdoc_number, standardize_frdoc_number
 from frdocs import load_info_df
 
 from frdocs.config import data_dir
