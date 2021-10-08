@@ -193,15 +193,15 @@ def main(args=None):
 if __name__ == "__main__":
     main()
 
-
-for record in iter_raw_agenda_records(raw_agenda_dir):
-    if record['publication'][0]['publication_id'] == '200504':
-        if record['rin'] == '2127-AH73':
-            break
-
-
-raw_record = record.copy()
-
-event = record['timetable'][1]
-
-record = raw_record.copy()
+#
+# for record in iter_raw_agenda_records(raw_agenda_dir):
+#     if record['publication'][0]['publication_id'] == '200504':
+#         if record['rin'] == '2127-AH73':
+#             break
+#
+#
+# raw_record = record.copy()
+#
+# event = record['timetable'][1]
+#
+# record = raw_record.copy()
