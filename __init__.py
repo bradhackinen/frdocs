@@ -1,8 +1,12 @@
 import os
 from pathlib import Path
 import pandas as pd
+import numpy as np
 from msgpack import load
 import re
+from unidecode import unidecode
+from collections import Counter
+from tqdm import tqdm
 
 from frdocs.config import data_dir
 
@@ -158,19 +162,46 @@ def load_timetable_df(publications=None,rin_list=None):
 
 class CitationFinder():
 
-    def __init__(self):
+    def __init__(self,enable_keywords=False,max_keyword_occurrences=10000):
         self.index_df = load_index()
-
         self.index_df = self.index_df.sort_values(['volume','start_page','end_page','frdoc_number'])
-
-        # multi_page = self.index_df['end_page'] > self.index_df['start_page']
-        # self.index_df.loc[multi_page,'end_page'] = self.index_df.loc[multi_page,'end_page'] - 1
 
         self.volume = self.index_df['volume']
         self.start_page = self.index_df['start_page']
         self.end_page = self.index_df['end_page']
 
-    def __call__(self,citation_string=None,volume=None,page=None,favour_first_page=True,strict_parsing=False):
+        self.enable_keywords = enable_keywords
+
+        if enable_keywords:
+
+            self.stopwords = {'','the','to','be','of','and','a','in','that','have','it','for','on','with','as','do','at','for'}
+            self.max_keyword_occurrences = max_keyword_occurrences
+
+            print('Building keywords and weights')
+            keywords = {}
+            keyword_counts = Counter()
+            for record in iter_info():
+                d = record['frdoc_number']
+                if d not in keywords:
+                    keywords[d] = set()
+
+                # print(record)
+                texts = {record[field] for field in ['title','abstract'] if (field in record) and record[field]}
+                new_keywords = {t for text in texts for t in self.tokenize(text)}
+
+                keywords[d].update(new_keywords)
+                keyword_counts.update(new_keywords)
+
+            # Trim common keywords
+            for d,d_keywords in keywords.items():
+                keywords[d] = {t for t in d_keywords if keyword_counts[d] <= max_keyword_occurrences}
+
+            # Compute keyword weights
+            self.keyword_weights = {x:1/np.log(1+c) for x,c in keyword_counts.items()}
+
+            self.keywords = keywords
+
+    def __call__(self,citation_string=None,volume=None,page=None,keywords=None,favour_first_page=False,strict_parsing=False):
 
         if not citation_string or (volume and page):
             raise ValueError('Must provide a citation string, or volume and page')
@@ -198,7 +229,47 @@ class CitationFinder():
             if df['first_page_match'].sum():
                 df = df[df['first_page_match']]
 
-        return list(df['frdoc_number'].values)
+        if keywords is not None:
+            if self.enable_keywords:
+                # Convert all queries to strings for consistent tokenization and cleaning
+                if not isinstance(keywords,str):
+                    keywords = ' '.join(keywords)
+
+                keywords = {t for t in self.tokenize(keywords) if t in self.keyword_weights}
+
+                df['keyword_jaccard'] = [self.keyword_jaccard(self.keywords[d],keywords) for d in df['frdoc_number']]
+
+                df = df.sort_values('keyword_jaccard',ascending=False)
+
+            else:
+                raise ValueError('Must initialize citation finder with enable_keywords=True to use keyword disambiguation')
+
+        return list(df.to_dict('records'))
+
+    def tokenize(self,s):
+        s = s.lower()
+        s = unidecode(s)
+        s = re.sub(r'\s+',' ',s).strip()
+        s = re.sub(r'[^a-z0-9]+',' ',s)
+
+        tokens = [t for t in s.split() if t not in self.stopwords]
+        for t in tokens:
+            yield t
+        for i in range(len(tokens)-1):
+            yield tokens[i]+'_'+tokens[i+1]
+
+    def keyword_jaccard(self,w_i,w_j):
+        keyword_weights = self.keyword_weights
+
+        totalWeight = sum(keyword_weights[w] for w in (w_i | w_j) if w in keyword_weights)
+
+        if totalWeight:
+            sharedWeight = sum(keyword_weights[w] for w in (w_i & w_j) if w in keyword_weights)
+
+            return sharedWeight/totalWeight
+        else:
+            return 0
+
 
 
 if __name__ == "__main__":
@@ -244,4 +315,10 @@ if __name__ == "__main__":
     print(f"{citation_finder('78 FR 41677')=}")
     print(f"{citation_finder('78 FR 41678')=}")
     print(f"{citation_finder('65 FR 4601')=}")
-    print(f"{citation_finder('65 FR 4601',favour_first_page=False)=}")
+    print(f"{citation_finder('65 FR 4601',favour_first_page=True)=}")
+
+    print('\nTesting CitationFinder with keyword search')
+    citation_finder = CitationFinder(enable_keywords=True)
+    print(f"{citation_finder('78 FR 41677')=}")
+    print(f"{citation_finder('78 FR 41678')=}")
+    print(f"{citation_finder('65 FR 4601',keywords='Uzbekistan Uranium Antidumping Investigation')=}")
