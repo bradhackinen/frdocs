@@ -6,7 +6,6 @@ from msgpack import load
 import re
 from unidecode import unidecode
 from collections import Counter
-from tqdm import tqdm
 
 from frdocs.config import data_dir
 
