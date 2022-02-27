@@ -21,6 +21,7 @@ if __name__ == "__main__":
     parser.add_argument('--parsed_dir',type=str,default=str(Path(data_dir) / 'parsed'))
 
     parser.add_argument('--skip_info',dest='skip_info',action='store_true')
+    parser.add_argument('--skip_xml',dest='skip_info',action='store_true')
     parser.add_argument('--skip_agenda',dest='skip_agenda',action='store_true')
     parser.add_argument('--skip_parsed',dest='skip_parsed',action='store_true')
 
@@ -35,7 +36,7 @@ if __name__ == "__main__":
             download_meta.main(args)
         if not args.skip_agenda:
             download_agenda.main(args)
-        if not args.skip_parsed:
+        if not (args.skip_parsed or args.skip_xml):
             download_xml.main(args)
 
     # Preprocess data

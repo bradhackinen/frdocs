@@ -15,7 +15,8 @@ def main(args):
 
     info_df = load_info_df(fields=['document_number', 'publication_date', 'full_text_xml_url'])
 
-    dates_df = info_df[info_df['full_text_xml_url'].notnull()] \
+    # dates_df = info_df[info_df['full_text_xml_url'].notnull()]
+    dates_df = info_df \
                         .groupby('publication_date')[['document_number']].count() \
                         .reset_index() \
                         .rename(columns={'document_number': 'documents'})

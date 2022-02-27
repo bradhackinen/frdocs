@@ -1,8 +1,10 @@
-import os
 import lxml.etree as et
 import pandas as pd
 import numpy as np
 import regex as re
+from unidecode import unidecode
+
+from frdocs import load_info_df
 
 
 def get_element_text(element):
