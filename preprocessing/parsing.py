@@ -240,12 +240,12 @@ def parse_reg_xml_tree(tree,nlp=None,extract_numbering=True,verbose=False,
             -In some documents, XML <p> items correspond to paragraphs
             -In some documents, <p> items contain multiple paragraphs split by newline characters
 
-            For the sake of consistentency, split all paragraphs on newlines by default,
-            keeping trailing whitespace with each paragraph
+            If split_paragraphs=True, we ensure that each paragraph will have
+            only one newline character. Separating whitespace is assigned
+            to previous paragraph.
             """
-            if split_paragraphs:
-                par_texts = [m.group(0) for m in re.finditer(r'\s*.*\n?\s*',text)]
-
+            if split_paragraphs and text:
+                par_texts = [m.group(0) for m in re.finditer(r'(\n|.+\n?)([^\S\n]+)?',text)]
             else:
                 par_texts = [text]
 
