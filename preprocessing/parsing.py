@@ -12,15 +12,38 @@ def get_element_text(element):
     Extract text while
     -skipping footnote numbers
     -Adding a space before and after emphasized text
-    """
-    head = element.text if element.tag != 'SU' else ''
 
-    child = ' '.join(s for e in element.getchildren()
+    The general pattern seems to be that:
+    - Paragraphs starting with a newline indicate a double-space break
+    - Newlines that immidiately follow a closing tag appear to be for XML
+      readability only, and should not be included in the text
+
+    Therefore, we strip newlines at start of the element tail, but leave
+    newlines at the start of "head" text.
+    """
+    head = element.text or ''
+
+    # Skip footnote numbers
+    if element.tag == 'SU':
+        head = ''
+
+    # Drop formatting whitespace
+    elif re.match(r'\n\s*',head):
+        head = ''
+
+    child = ''.join(s for e in element.getchildren()
                      for s in [get_element_text(e)] if s)
 
     tail = element.tail
 
-    return ' '.join(s for s in (head,child,tail) if s)
+    # Drop formatting whitespace
+    if re.match(r'\n\s*',tail):
+        tail = ''
+    #
+    # if tail.startswith('\n'):
+    #     tail = tail[1:]
+
+    return ''.join(s for s in (head,child,tail) if s)
 
 
 def update_header(header,element):
@@ -161,10 +184,10 @@ def clean_paragraph_text(s):
     Adjust paragraph text, primarily to improve spacy tokenization
     (kind of a hack, but oh well)
     '''
-    #Add spaces to split on opening brackets
+    # Add spaces to split on opening brackets
     s = re.sub(r'(\S)\(',r'\g<1> (',s)
 
-    #Add spaces around emdash and dash
+    # Add spaces around emdash and dash
     s = re.sub(r'(\S)([\u2014-])(\S)',r'\g<1> \g<2> \g<3>',s)
 
     return s
@@ -172,6 +195,9 @@ def clean_paragraph_text(s):
 
 def parse_xml_file(xmlFile,**args):
     with open(xmlFile,'rb') as f:
+        # xml = f.read()
+        # Strip formatting whitespace
+        # xml = re.replace(r'\n +')
         tree = et.parse(f)
 
     return parse_reg_xml_tree(tree,**args)
@@ -619,3 +645,17 @@ class FrdocResolver():
             print('Candidates: None')
 
         return None
+
+
+#
+# from frdocs import project_dir
+#
+# test_dir = project_dir / 'preprocessing' / 'test_docs'
+#
+# df = parse_xml_file(test_dir/'00-14851.xml',split_paragraphs=True)
+#
+# p = df[df['text'].str.contains(r'an 18-kg box')].index.get_level_values(0)[0]
+#
+# df.loc[p:p+10,:]
+#
+# print('\n'.join(df.loc[p:p+10,'text']))
