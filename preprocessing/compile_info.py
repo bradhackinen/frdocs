@@ -1,4 +1,5 @@
 import os
+from argparse import ArgumentParser
 from pathlib import Path
 from msgpack import load,dump
 import regex as re
@@ -10,10 +11,10 @@ from frdocs.config import data_dir
 
 
 def cfr_dict_to_string(d):
-    if d['chapter']:
-        return '%s CFR Chapter %s %s' % (d['title'], d['chapter'], d['part'])
-    else:
-        return '%s CFR %s' % (d['title'], d['part'])
+    # if d['chapter']:
+    #     return '%s CFR Chapter %s %s' % (d['title'], d['chapter'], d['part'])
+    # else:
+    return '%s CFR %s' % (d['title'], d['part'])
 
 
 def clean_info(record):
@@ -31,9 +32,45 @@ def clean_info(record):
     if record['action']:
         action = record['action'].lower()
 
+        '''
+        Note: Some documents are published primarily to extend a comment period
+        for a prior document. Let's call these "Comment Extensions". The problem
+        is that agencies sometimes publish a comment extension as a notice, and
+        sometimes as another type like a proposed rule. The action text can be
+        helpful to detect some of these cases, but it is not sufficient.
+
+        Example comment extensions classified as proposed rules:
+        ------------------------------------------------------------------------
+        2022-12096      Request for information; extension of public comment
+                        period.
+
+        2022-05972      Proposed rule; extension of comment period.
+
+        E9-7703         Proposed rule; extension of comment period.
+
+        E8-9740         Proposed clarification; reopening of comment period.
+
+        2020-13279      Reopening of public comment period.
+        ------------------------------------------------------------------------
+
+        Example proposed rules that mention extending the comment period:
+        ------------------------------------------------------------------------
+        2012-24805      Supplemental notice of proposed rulemaking (NPRM);
+                        reopening of comment period.
+        ------------------------------------------------------------------------
+        '''
+
+        if re.search(r'(exten(d|sion)|reopening).+(time|period|deadline)', action):
+            if 'comment' in action:
+                record['type'] = 'Comment Extension'
+            elif 'filing' in action:
+                record['type'] = 'Filing Extension'
+
         if re.search(r'proposed\s+rule', action):
             if re.search(r'advance.+notice.+proposed\s+rule', action):
-                record['type'] = 'ANPRM'
+                record['type'] = 'Advance Notice of Proposed Rule'
+            elif re.search(r'supplemental.+proposed\s+rule', action):
+                record['type'] = 'Supplemental Proposed Rule'
             else:
                 record['type'] = 'Proposed Rule'
 
@@ -50,12 +87,6 @@ def clean_info(record):
 
         elif re.search(r'regulatory\sagenda', action):
             record['type'] = 'Regulatory Agenda'
-
-        if re.search(r'(exten(d|sion)|reopening).+(time|period|deadline)', action):
-            if 'comment' in action:
-                record['type'] = 'Comment Extension'
-            elif 'filing' in action:
-                record['type'] = 'Filing Extension'
 
         if bool(re.search(r'correcti(on|ng)', action)):
             record['is_correction'] = True
@@ -115,4 +146,9 @@ def main(args):
 
 
 if __name__ == '__main__':
-    main()
+
+    parser = ArgumentParser()
+
+    args = parser.parse_args()
+
+    main(args)
